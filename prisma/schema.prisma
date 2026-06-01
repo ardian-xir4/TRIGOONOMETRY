@@ -1,0 +1,67 @@
+// This is your Prisma schema file
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int       @id @default(autoincrement())
+  email     String    @unique
+  password  String
+  wallet    Decimal   @default(0.00) @db.Decimal(10, 2)
+  avatarUrl String?   @default("https://images.unsplash.com/photo-1535713875002-d1d0cf377fde") // Added for Profile UI
+  createdAt DateTime  @default(now()) // Added for "Member since" layout field
+  projects  Project[]
+}
+
+model Project {
+  id          Int          @id @default(autoincrement())
+  title       String
+  description String?
+  imageUrl    String?
+  status      String       @default("WIP") 
+  progress    Int          @default(0)    // Added for the frontend progress bars!
+  totalSpent  Decimal      @default(0.00) @db.Decimal(10, 2)
+  userId      Int
+  user        User         @relation(fields: [userId], references: id, onDelete: Cascade)
+  modLogs     ModLog[]     
+  tags        ProjectTag[] 
+  createdAt   DateTime     @default(now()) // Added to track recent project ordering
+}
+
+model ModLog {
+  id          Int      @id @default(autoincrement())
+  logName     String   
+  description String?
+  cost        Decimal  @db.Decimal(10, 2)
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  projectId   Int
+  project     Project  @relation(fields: [projectId], references: id, onDelete: Cascade)
+}
+
+// Public catalog store items
+model PartListing {
+  id    Int     @id @default(autoincrement())
+  name  String
+  price Decimal @db.Decimal(10, 2)
+}
+
+model Tag {
+  id       Int          @id @default(autoincrement())
+  name     String       @unique
+  projects ProjectTag[]
+}
+
+model ProjectTag {
+  projectId Int
+  tagId     Int
+  project   Project @relation(fields: [projectId], references: id, onDelete: Cascade)
+  tag       Tag     @relation(fields: [tagId], references: id, onDelete: Cascade)
+
+  @@id([projectId, tagId])
+}
