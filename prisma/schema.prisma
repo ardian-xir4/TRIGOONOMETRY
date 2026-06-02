@@ -13,6 +13,7 @@ model User {
   email     String    @unique
   password  String
   wallet    Decimal   @default(0.00) @db.Decimal(10, 2)
+  role      String   @default("goons")
   avatarUrl String?   @default("https://images.unsplash.com/photo-1535713875002-d1d0cf377fde") // Added for Profile UI
   createdAt DateTime  @default(now()) // Added for "Member since" layout field
   projects  Project[]
