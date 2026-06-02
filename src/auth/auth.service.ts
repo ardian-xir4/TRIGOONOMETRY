@@ -40,15 +40,19 @@ export class AuthService {
   }
 
   async register(body: any) {
-    const { email, password } = body;
+    const { email, password, username, fullname } = body;
 
-    if (!email || !password) {
-      throw new BadRequestException('Email and password are required');
+    if (!email || !password || !username || !fullname) {
+      throw new BadRequestException('bro check yo shi');
     }
 
     const existingUser = await this.prisma.user.findUnique({ where: { email } });
     if (existingUser) {
-      throw new BadRequestException('Email is already registered');
+      throw new BadRequestException('sum1 already used ts bro🥀');
+    }
+    const existingUsername = await this.prisma.user.findUnique({ where: { username, } });
+    if (existingUsername) {
+      throw new BadRequestException('sum1 already used ts bro🥀');
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -56,6 +60,8 @@ export class AuthService {
     const newUser = await this.prisma.user.create({
       data: {
         email,
+        username,
+        fullname,
         password: hashedPassword,
         role: 'goons',
       },
@@ -90,4 +96,6 @@ export class AuthService {
       token,
     };
   }
+
+  
 }

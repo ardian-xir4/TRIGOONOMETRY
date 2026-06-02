@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Put, Delete, Body, UseGuards, Req, Param, ParseIntPipe, Query } from '@nestjs/common';
+import { Controller, Post, Get, Put, Delete, Body, UseGuards, Req, Param, ParseIntPipe, Query, NotFoundException } from '@nestjs/common';
 import { ProjectsService } from './projects.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -6,11 +6,15 @@ import { Roles } from '../auth/roles.decorator';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { CreateTimelineDto } from './dto/create-timeline.dto';
+import { PrismaService } from '../prisma/prisma.service';
 
 @ApiTags('Project Forum & Marketplace System')
 @Controller('projects')
 export class ProjectsController {
-  constructor(private projectsService: ProjectsService) {}
+  constructor(
+    private projectsService: ProjectsService,
+    private prisma: PrismaService,
+  ) {}
 
   // --- SHOP ENDPOINTS ---
   
@@ -103,4 +107,25 @@ export class ProjectsController {
   async getActivityFeed() {
     return this.projectsService.getRecentActivityFeed();
   }
+
+  @Get('user/:username')
+@ApiOperation({ summary: 'Public Route: Fetch all car builds belonging to a specific username handle' })
+async getProjectsByUsername(@Param('username') username: string) {
+  const userWithProjects = await this.prisma.user.findUnique({
+    where: { username },
+    select: {
+      fullname: true, // <-- UPDATED: Changed from 'name' to match your schema's 'fullname'
+      username: true,
+      avatarUrl: true, // <-- OPTIONAL: Bringing this along so the UI can show their picture!
+      projects: {
+      }
+    }
+  });
+
+  if (!userWithProjects) {
+    throw new NotFoundException(`The user handle "${username}" does not exist`);
+  }
+
+  return userWithProjects;
+}
 }

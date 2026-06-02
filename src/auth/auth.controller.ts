@@ -1,13 +1,18 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Get, Body, UseGuards, Req } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { PrismaService } from '../prisma/prisma.service'; // <-- Added to fix this.prisma
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthDto } from './dto/auth.dto';
-import { AddMoneyDto } from './dto/add-money.dto'; // Make sure this is imported
+import { AddMoneyDto } from './dto/add-money.dto'; 
+import { JwtAuthGuard } from './jwt-auth.guard';
 
 @ApiTags('Authentication & Testing Profiles')
 @Controller('auth')
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(
+    private authService: AuthService,
+    private prisma: PrismaService, // <-- Injected Prisma here
+  ) {}
 
   @Post('register')
   @ApiOperation({ summary: 'Register a new driver account' })
@@ -24,7 +29,27 @@ export class AuthController {
   @Post('wallet/add')
   @ApiOperation({ summary: 'Deposit testing money directly via raw Body parameters' })
   async addFunds(@Body() body: AddMoneyDto) {
-    // CRITICAL FIX: Read directly from body.userId, NOT req.user.userId!
     return this.authService.addFunds(body.userId, body.amount);
+  }
+
+  @Get('profile')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'stalk on other guys' })
+  async getProfile(@Req() req: any) {
+    // Fetches the logged-in user profile and returns it cleanly
+    const user = await this.prisma.user.findUnique({
+      where: { id: req.user.userId },
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        fullname: true,
+        role: true,
+        createdAt: true,
+      },
+    });
+    
+    return user; // <-- Added return so Swagger actually gets the data back
   }
 }
