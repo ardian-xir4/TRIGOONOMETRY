@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ProjectsService } from './projects.service';
 import { ProjectsController } from './projects.controller';
-import { AuthModule } from '../auth/auth.module'; // Import Auth Layout
+import { AuthModule } from '../auth/auth.module';
+import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
-  imports: [AuthModule], // Injects JWT mechanics into the Guard
+  imports: [AuthModule, PrismaModule],
   providers: [ProjectsService],
   controllers: [ProjectsController],
 })

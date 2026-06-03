@@ -5,7 +5,6 @@ import { PrismaService } from '../prisma/prisma.service';
 export class ProjectsService {
   constructor(private prisma: PrismaService) {}
 
-  // --- SHOP ENDPOINTS ---
   async createPartListing(body: any) {
     const { name, price } = body;
     if (!name || !price) throw new BadRequestException('Name and price are required');
@@ -18,19 +17,16 @@ export class ProjectsService {
     return (this.prisma as any).partListing.findMany();
   }
 
-  // --- TAG PROCESSING HELPER UTILITY ---
   private async linkTagsToProject(tx: any, projectId: number, tags: string[]) {
     if (!tags || tags.length === 0) return;
 
     for (const tagName of tags) {
-      // 1. Create tag if it doesn't exist, or grab it if it does
       const tag = await tx.tag.upsert({
         where: { name: tagName },
         update: {},
         create: { name: tagName },
       });
 
-      // 2. Cast tx as any right here to completely shatter the compiler error
       await (tx as any).projectTag.create({
         data: { 
           projectId: Number(projectId), 
@@ -40,7 +36,6 @@ export class ProjectsService {
     }
   }
 
-  // --- POST PROJECT ---
   async createProject(userId: number, body: any) {
     const { title, description, imageUrl, status, tags } = body;
     if (!title) throw new BadRequestException('Project title is required');
@@ -74,52 +69,46 @@ export class ProjectsService {
     });
   }
 
-// --- PUT UPDATE PROJECT & EDIT TAGS ---
-async updateProject(projectId: number, loggedInUserId: number, body: any) {
-  const { title, description, imageUrl, status, tags } = body;
+  async updateProject(projectId: number, loggedInUserId: number, body: any) {
+    const { title, description, imageUrl, status, tags } = body;
 
-  const project = await this.prisma.project.findUnique({ 
-    where: { id: Number(projectId) } 
-  });
-
-  if (!project) {
-    throw new NotFoundException('Project build profile not found');
-  }
-
-  if (Number(project.userId) !== Number(loggedInUserId)) {
-    throw new ForbiddenException('Its not urs gng');
-  }
-
-  // 💡 Dynamic Payload: Only assign properties if they are explicitly passed by the frontend
-  const updateData: any = {};
-  if (title !== undefined) updateData.title = title;
-  if (description !== undefined) updateData.description = description;
-  if (status !== undefined) updateData.status = status;
-  if (imageUrl !== undefined) updateData['imageUrl'] = imageUrl; // Handles photo securely
-
-  return this.prisma.$transaction(async (tx) => {
-    // 1. Update project specifications safely
-    await tx.project.update({
-      where: { id: Number(projectId) },
-      data: updateData,
+    const project = await this.prisma.project.findUnique({ 
+      where: { id: Number(projectId) } 
     });
 
-    // 2. If tags array is passed, clear old connections and overwrite
-    if (tags) {
-      await (tx as any).projectTag.deleteMany({ where: { projectId: Number(projectId) } });
-      await this.linkTagsToProject(tx, Number(projectId), tags);
+    if (!project) {
+      throw new NotFoundException('Project build profile not found');
     }
 
-    return tx.project.findUnique({
-      where: { id: Number(projectId) },
-      include: { tags: { include: { tag: true } } } as any,
-    });
-  });
-}
+    if (Number(project.userId) !== Number(loggedInUserId)) {
+      throw new ForbiddenException('Its not urs gng');
+    }
 
-  // --- DELETE PROJECT ---
+    const updateData: any = {};
+    if (title !== undefined) updateData.title = title;
+    if (description !== undefined) updateData.description = description;
+    if (status !== undefined) updateData.status = status;
+    if (imageUrl !== undefined) updateData['imageUrl'] = imageUrl;
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.project.update({
+        where: { id: Number(projectId) },
+        data: updateData,
+      });
+
+      if (tags) {
+        await (tx as any).projectTag.deleteMany({ where: { projectId: Number(projectId) } });
+        await this.linkTagsToProject(tx, Number(projectId), tags);
+      }
+
+      return tx.project.findUnique({
+        where: { id: Number(projectId) },
+        include: { tags: { include: { tag: true } } } as any,
+      });
+    });
+  }
+
   async deleteProject(projectId: number, loggedInUserId: number) {
-    // Fixed: Force matching integer parser
     const project = await this.prisma.project.findUnique({
       where: { id: Number(projectId) },
     });
@@ -128,7 +117,6 @@ async updateProject(projectId: number, loggedInUserId: number, body: any) {
       throw new NotFoundException('Project build profile not found');
     }
 
-    // Fixed: Secure mapping validation
     if (Number(project.userId) !== Number(loggedInUserId)) {
       throw new ForbiddenException('You do not have permission to delete this project!');
     }
@@ -138,31 +126,48 @@ async updateProject(projectId: number, loggedInUserId: number, body: any) {
     });
   }
 
-  // --- TIMELINE LOGS ---
   async addTimelineLog(userId: number, projectId: number, body: any) {
     const { title, description, cost, imageUrl } = body;
-    const project = await this.prisma.project.findUnique({ where: { id: Number(projectId) } });
-    if (!project || Number(project.userId) !== Number(userId)) throw new NotFoundException('Project build profile not found');
-
     const modCost = Number(cost || 0);
 
-    const logEntry = await (this.prisma as any).modLog.create({
-      data: {
-        logName: title,
-        cost: modCost,
-        projectId: Number(projectId),
-        description,
-        ['imageUrl' as any]: imageUrl,
-      } as any,
-    });
+    const [project, user] = await Promise.all([
+      this.prisma.project.findUnique({ where: { id: Number(projectId) } }),
+      this.prisma.user.findUnique({ where: { id: Number(userId) } }),
+    ]);
 
-    const newTotalSpent = Number(project.totalSpent) + modCost;
-    await this.prisma.project.update({
-      where: { id: Number(projectId) },
-      data: { totalSpent: newTotalSpent },
-    });
+    if (!project || Number(project.userId) !== Number(userId)) {
+      throw new NotFoundException('Project build profile not found');
+    }
+    if (!user) throw new NotFoundException('User profile not found');
 
-    return { success: true, updatedTotalSpent: newTotalSpent, logEntry };
+    if (Number(user.wallet) < modCost) {
+      throw new BadRequestException(`Insufficient funds! This mod costs $${modCost.toFixed(2)}, but you only have $${Number(user.wallet).toFixed(2)}`);
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: Number(userId) },
+        data: { wallet: { decrement: modCost } },
+      });
+
+      const logEntry = await (tx as any).modLog.create({
+        data: {
+          logName: title,
+          cost: modCost,
+          projectId: Number(projectId),
+          description,
+          ['imageUrl' as any]: imageUrl,
+        } as any,
+      });
+
+      const newTotalSpent = Number(project.totalSpent) + modCost;
+      await tx.project.update({
+        where: { id: Number(projectId) },
+        data: { totalSpent: newTotalSpent },
+      });
+
+      return { success: true, updatedTotalSpent: newTotalSpent, logEntry };
+    });
   }
 
   async updateTimelineLog(userId: number, logId: number, body: any) {
@@ -172,26 +177,40 @@ async updateProject(projectId: number, loggedInUserId: number, body: any) {
     });
     if (!log || Number(log.project.userId) !== Number(userId)) throw new NotFoundException('Timeline entry not found');
 
+    const user = await this.prisma.user.findUnique({ where: { id: Number(userId) } });
+    if (!user) throw new NotFoundException('User profile not found');
+
     const oldCost = Number(log.cost);
     const newCost = Number(body.cost ?? oldCost);
-
-    const updatedLog = await (this.prisma as any).modLog.update({
-      where: { id: Number(logId) },
-      data: {
-        logName: body.title,
-        description: body.description,
-        cost: newCost,
-        ['imageUrl' as any]: body.imageUrl,
-      } as any,
-    });
-
     const costDifference = newCost - oldCost;
-    await this.prisma.project.update({
-      where: { id: Number(log.projectId) },
-      data: { totalSpent: Number(log.project.totalSpent) + costDifference },
-    });
 
-    return updatedLog;
+    if (costDifference > 0 && Number(user.wallet) < costDifference) {
+      throw new BadRequestException(`Insufficient funds to upgrade this log! Need an additional $${costDifference.toFixed(2)}`);
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: Number(userId) },
+        data: { wallet: { decrement: costDifference } },
+      });
+
+      const updatedLog = await (tx as any).modLog.update({
+        where: { id: Number(logId) },
+        data: {
+          logName: body.title,
+          description: body.description,
+          cost: newCost,
+          ['imageUrl' as any]: body.imageUrl,
+        } as any,
+      });
+
+      await tx.project.update({
+        where: { id: Number(log.projectId) },
+        data: { totalSpent: Number(log.project.totalSpent) + costDifference },
+      });
+
+      return updatedLog;
+    });
   }
 
   async deleteTimelineLog(userId: number, logId: number) {
@@ -201,16 +220,22 @@ async updateProject(projectId: number, loggedInUserId: number, body: any) {
     });
     if (!log || Number(log.project.userId) !== Number(userId)) throw new NotFoundException('Timeline entry not found');
 
-    await this.prisma.project.update({
-      where: { id: Number(log.projectId) },
-      data: { totalSpent: Number(log.project.totalSpent) - Number(log.cost) },
-    });
+    return this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: Number(userId) },
+        data: { wallet: { increment: Number(log.cost) } },
+      });
 
-    await (this.prisma as any).modLog.delete({ where: { id: Number(logId) } });
-    return { success: true, message: 'Timeline modification log wiped successfully' };
+      await tx.project.update({
+        where: { id: Number(log.projectId) },
+        data: { totalSpent: Number(log.project.totalSpent) - Number(log.cost) },
+      });
+
+      await (tx as any).modLog.delete({ where: { id: Number(logId) } });
+      return { success: true, message: 'Timeline modification log wiped and cost refunded successfully' };
+    });
   }
 
-  // --- NEW: FETCH USER DASHBOARD COUNTERS & INSIGHT METRICS ---
   async getUserDashboardMetrics(userId: number) {
     const cleanId = Number(userId);
 
@@ -242,7 +267,6 @@ async updateProject(projectId: number, loggedInUserId: number, body: any) {
     };
   }
 
-  // --- NEW: SYSTEM-WIDE GLOBAL FEED FOR THE RECENT ACTIVITY BLOCK ---
   async getRecentActivityFeed() {
     return (this.prisma as any).modLog.findMany({
       take: 5,
