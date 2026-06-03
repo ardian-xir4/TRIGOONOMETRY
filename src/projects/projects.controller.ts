@@ -77,6 +77,7 @@ export class ProjectsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiBearerAuth()
   async addTimeline(@Req() req: any, @Param('id', ParseIntPipe) id: number, @Body() body: CreateTimelineDto) {
+    // 💡 Explicit order: req.user.userId maps to userId, id maps to projectId
     return this.projectsService.addTimelineLog(req.user.userId, id, body);
   }
 
