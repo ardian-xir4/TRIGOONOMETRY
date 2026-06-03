@@ -74,48 +74,48 @@ export class ProjectsService {
     });
   }
 
-  // --- PUT UPDATE PROJECT & EDIT TAGS ---
-  async updateProject(projectId: number, loggedInUserId: number, body: any) {
-    const { title, description, imageUrl, status, tags } = body;
+// --- PUT UPDATE PROJECT & EDIT TAGS ---
+async updateProject(projectId: number, loggedInUserId: number, body: any) {
+  const { title, description, imageUrl, status, tags } = body;
 
-    // Fixed: Force type validation for Prisma queries
-    const project = await this.prisma.project.findUnique({ 
-      where: { id: Number(projectId) } 
-    });
+  const project = await this.prisma.project.findUnique({ 
+    where: { id: Number(projectId) } 
+  });
 
-    if (!project) {
-      throw new NotFoundException('Project build profile not found');
-    }
-
-    // Fixed: Force number checking for secure evaluation comparison
-    if (Number(project.userId) !== Number(loggedInUserId)) {
-      throw new ForbiddenException('Its not urs gng');
-    }
-
-    return this.prisma.$transaction(async (tx) => {
-      // 1. Update project specifications text fields
-      await tx.project.update({
-        where: { id: Number(projectId) },
-        data: {
-          title,
-          description,
-          ['imageUrl' as any]: imageUrl,
-          status,
-        } as any,
-      });
-
-      // 2. If tags array is passed, clear old connections and overwrite with new layout map
-      if (tags) {
-        await (tx as any).projectTag.deleteMany({ where: { projectId: Number(projectId) } });
-        await this.linkTagsToProject(tx, Number(projectId), tags);
-      }
-
-      return tx.project.findUnique({
-        where: { id: Number(projectId) },
-        include: { tags: { include: { tag: true } } } as any,
-      });
-    });
+  if (!project) {
+    throw new NotFoundException('Project build profile not found');
   }
+
+  if (Number(project.userId) !== Number(loggedInUserId)) {
+    throw new ForbiddenException('Its not urs gng');
+  }
+
+  // 💡 Dynamic Payload: Only assign properties if they are explicitly passed by the frontend
+  const updateData: any = {};
+  if (title !== undefined) updateData.title = title;
+  if (description !== undefined) updateData.description = description;
+  if (status !== undefined) updateData.status = status;
+  if (imageUrl !== undefined) updateData['imageUrl'] = imageUrl; // Handles photo securely
+
+  return this.prisma.$transaction(async (tx) => {
+    // 1. Update project specifications safely
+    await tx.project.update({
+      where: { id: Number(projectId) },
+      data: updateData,
+    });
+
+    // 2. If tags array is passed, clear old connections and overwrite
+    if (tags) {
+      await (tx as any).projectTag.deleteMany({ where: { projectId: Number(projectId) } });
+      await this.linkTagsToProject(tx, Number(projectId), tags);
+    }
+
+    return tx.project.findUnique({
+      where: { id: Number(projectId) },
+      include: { tags: { include: { tag: true } } } as any,
+    });
+  });
+}
 
   // --- DELETE PROJECT ---
   async deleteProject(projectId: number, loggedInUserId: number) {
