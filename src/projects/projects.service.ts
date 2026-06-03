@@ -78,22 +78,24 @@ export class ProjectsService {
   async updateProject(projectId: number, loggedInUserId: number, body: any) {
     const { title, description, imageUrl, status, tags } = body;
 
+    // Fixed: Force type validation for Prisma queries
     const project = await this.prisma.project.findUnique({ 
-      where: { id: projectId } 
+      where: { id: Number(projectId) } 
     });
 
     if (!project) {
       throw new NotFoundException('Project build profile not found');
     }
 
-    if (project.userId !== loggedInUserId) {
+    // Fixed: Force number checking for secure evaluation comparison
+    if (Number(project.userId) !== Number(loggedInUserId)) {
       throw new ForbiddenException('Its not urs gng');
     }
 
     return this.prisma.$transaction(async (tx) => {
       // 1. Update project specifications text fields
       await tx.project.update({
-        where: { id: projectId },
+        where: { id: Number(projectId) },
         data: {
           title,
           description,
@@ -104,12 +106,12 @@ export class ProjectsService {
 
       // 2. If tags array is passed, clear old connections and overwrite with new layout map
       if (tags) {
-        await (tx as any).projectTag.deleteMany({ where: { projectId } });
-        await this.linkTagsToProject(tx, projectId, tags);
+        await (tx as any).projectTag.deleteMany({ where: { projectId: Number(projectId) } });
+        await this.linkTagsToProject(tx, Number(projectId), tags);
       }
 
       return tx.project.findUnique({
-        where: { id: projectId },
+        where: { id: Number(projectId) },
         include: { tags: { include: { tag: true } } } as any,
       });
     });
@@ -117,31 +119,30 @@ export class ProjectsService {
 
   // --- DELETE PROJECT ---
   async deleteProject(projectId: number, loggedInUserId: number) {
-    // 1. Fetch the project first
+    // Fixed: Force matching integer parser
     const project = await this.prisma.project.findUnique({
-      where: { id: projectId },
+      where: { id: Number(projectId) },
     });
 
     if (!project) {
-      throw new NotFoundException('Project not found');
+      throw new NotFoundException('Project build profile not found');
     }
 
-    // 2. CRITICAL SECURITY CHECK: Does the project owner match the logged-in user?
-    if (project.userId !== loggedInUserId) {
+    // Fixed: Secure mapping validation
+    if (Number(project.userId) !== Number(loggedInUserId)) {
       throw new ForbiddenException('You do not have permission to delete this project!');
     }
 
-    // 3. If it matches, proceed with deleting it
     return this.prisma.project.delete({
-      where: { id: projectId },
+      where: { id: Number(projectId) },
     });
-  } // <-- FIXED: Added missing closing bracket here!
+  }
 
   // --- TIMELINE LOGS ---
   async addTimelineLog(userId: number, projectId: number, body: any) {
     const { title, description, cost, imageUrl } = body;
-    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
-    if (!project || project.userId !== userId) throw new NotFoundException('Project build profile not found');
+    const project = await this.prisma.project.findUnique({ where: { id: Number(projectId) } });
+    if (!project || Number(project.userId) !== Number(userId)) throw new NotFoundException('Project build profile not found');
 
     const modCost = Number(cost || 0);
 
@@ -149,7 +150,7 @@ export class ProjectsService {
       data: {
         logName: title,
         cost: modCost,
-        projectId,
+        projectId: Number(projectId),
         description,
         ['imageUrl' as any]: imageUrl,
       } as any,
@@ -157,7 +158,7 @@ export class ProjectsService {
 
     const newTotalSpent = Number(project.totalSpent) + modCost;
     await this.prisma.project.update({
-      where: { id: projectId },
+      where: { id: Number(projectId) },
       data: { totalSpent: newTotalSpent },
     });
 
@@ -166,16 +167,16 @@ export class ProjectsService {
 
   async updateTimelineLog(userId: number, logId: number, body: any) {
     const log = await (this.prisma as any).modLog.findUnique({
-      where: { id: logId },
+      where: { id: Number(logId) },
       include: { project: true },
     });
-    if (!log || log.project.userId !== userId) throw new NotFoundException('Timeline entry not found');
+    if (!log || Number(log.project.userId) !== Number(userId)) throw new NotFoundException('Timeline entry not found');
 
     const oldCost = Number(log.cost);
     const newCost = Number(body.cost ?? oldCost);
 
     const updatedLog = await (this.prisma as any).modLog.update({
-      where: { id: logId },
+      where: { id: Number(logId) },
       data: {
         logName: body.title,
         description: body.description,
@@ -186,7 +187,7 @@ export class ProjectsService {
 
     const costDifference = newCost - oldCost;
     await this.prisma.project.update({
-      where: { id: log.projectId },
+      where: { id: Number(log.projectId) },
       data: { totalSpent: Number(log.project.totalSpent) + costDifference },
     });
 
@@ -195,17 +196,17 @@ export class ProjectsService {
 
   async deleteTimelineLog(userId: number, logId: number) {
     const log = await (this.prisma as any).modLog.findUnique({
-      where: { id: logId },
+      where: { id: Number(logId) },
       include: { project: true },
     });
-    if (!log || log.project.userId !== userId) throw new NotFoundException('Timeline entry not found');
+    if (!log || Number(log.project.userId) !== Number(userId)) throw new NotFoundException('Timeline entry not found');
 
     await this.prisma.project.update({
-      where: { id: log.projectId },
+      where: { id: Number(log.projectId) },
       data: { totalSpent: Number(log.project.totalSpent) - Number(log.cost) },
     });
 
-    await (this.prisma as any).modLog.delete({ where: { id: logId } });
+    await (this.prisma as any).modLog.delete({ where: { id: Number(logId) } });
     return { success: true, message: 'Timeline modification log wiped successfully' };
   }
 
@@ -213,12 +214,10 @@ export class ProjectsService {
   async getUserDashboardMetrics(userId: number) {
     const cleanId = Number(userId);
 
-    // 1. Compute total counts
     const totalProjects = await this.prisma.project.count({
       where: { userId: cleanId }
     });
 
-    // 2. Fetch projects to calculate global aggregated investment math statistics
     const userProjects = await this.prisma.project.findMany({
       where: { userId: cleanId },
       select: { totalSpent: true }
@@ -226,7 +225,6 @@ export class ProjectsService {
 
     const totalInvestment = userProjects.reduce((sum, p) => sum + Number(p.totalSpent), 0);
 
-    // 3. Count recent modification actions submitted in the last 7 days
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     
