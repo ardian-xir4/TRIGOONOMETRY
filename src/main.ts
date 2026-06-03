@@ -10,8 +10,8 @@ async function bootstrap() {
   app.enableCors();
 
   const config = new DocumentBuilder()
-    .setTitle('Project Gearbox API')
-    .setDescription('The official backend layout for monitoring project car builds')
+    .setTitle('Gooning Box')
+    .setDescription('Lokasi Gooning Sejahtera')
     .setVersion('1.0')
     .addBearerAuth()
     .build();
@@ -21,7 +21,7 @@ async function bootstrap() {
 
   const port = process.env.PORT || 3000;
   await app.listen(port);
-  console.log(`🚀 Gearbox engine roaring on: http://localhost:${port}`);
-  console.log(`📄 Swagger documentation live on: http://localhost:${port}/api`);
+  console.log(`http://localhost:${port}`);
+  console.log(`http://localhost:${port}/api`);
 }
 bootstrap();
