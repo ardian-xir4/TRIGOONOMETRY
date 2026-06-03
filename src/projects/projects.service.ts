@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -18,27 +18,27 @@ export class ProjectsService {
     return (this.prisma as any).partListing.findMany();
   }
 
-// --- TAG PROCESSING HELPER UTILITY ---
-private async linkTagsToProject(tx: any, projectId: number, tags: string[]) {
-  if (!tags || tags.length === 0) return;
+  // --- TAG PROCESSING HELPER UTILITY ---
+  private async linkTagsToProject(tx: any, projectId: number, tags: string[]) {
+    if (!tags || tags.length === 0) return;
 
-  for (const tagName of tags) {
-    // 1. Create tag if it doesn't exist, or grab it if it does
-    const tag = await tx.tag.upsert({
-      where: { name: tagName },
-      update: {},
-      create: { name: tagName },
-    });
+    for (const tagName of tags) {
+      // 1. Create tag if it doesn't exist, or grab it if it does
+      const tag = await tx.tag.upsert({
+        where: { name: tagName },
+        update: {},
+        create: { name: tagName },
+      });
 
-    // 2. Cast tx as any right here to completely shatter the compiler error
-    await (tx as any).projectTag.create({
-      data: { 
-        projectId: Number(projectId), 
-        tagId: Number(tag.id) 
-      },
-    });
+      // 2. Cast tx as any right here to completely shatter the compiler error
+      await (tx as any).projectTag.create({
+        data: { 
+          projectId: Number(projectId), 
+          tagId: Number(tag.id) 
+        },
+      });
+    }
   }
-}
 
   // --- POST PROJECT ---
   async createProject(userId: number, body: any) {
@@ -75,15 +75,24 @@ private async linkTagsToProject(tx: any, projectId: number, tags: string[]) {
   }
 
   // --- PUT UPDATE PROJECT & EDIT TAGS ---
-  async updateProject(userId: number, projectId: number, body: any) {
+  async updateProject(projectId: number, loggedInUserId: number, body: any) {
     const { title, description, imageUrl, status, tags } = body;
 
-    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
-    if (!project || project.userId !== userId) throw new NotFoundException('Project build profile not found');
+    const project = await this.prisma.project.findUnique({ 
+      where: { id: projectId } 
+    });
+
+    if (!project) {
+      throw new NotFoundException('Project build profile not found');
+    }
+
+    if (project.userId !== loggedInUserId) {
+      throw new ForbiddenException('Its not urs gng');
+    }
 
     return this.prisma.$transaction(async (tx) => {
       // 1. Update project specifications text fields
-      const updatedProject = await tx.project.update({
+      await tx.project.update({
         where: { id: projectId },
         data: {
           title,
@@ -107,15 +116,28 @@ private async linkTagsToProject(tx: any, projectId: number, tags: string[]) {
   }
 
   // --- DELETE PROJECT ---
-  async deleteProject(userId: number, projectId: number) {
-    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
-    if (!project || project.userId !== userId) throw new NotFoundException('Project build profile not found');
+  async deleteProject(projectId: number, loggedInUserId: number) {
+    // 1. Fetch the project first
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+    });
 
-    await this.prisma.project.delete({ where: { id: projectId } });
-    return { success: true, message: 'Project profile deleted completely' };
-  }
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
 
-  // --- TIMELINE OPERATIONS ---
+    // 2. CRITICAL SECURITY CHECK: Does the project owner match the logged-in user?
+    if (project.userId !== loggedInUserId) {
+      throw new ForbiddenException('You do not have permission to delete this project!');
+    }
+
+    // 3. If it matches, proceed with deleting it
+    return this.prisma.project.delete({
+      where: { id: projectId },
+    });
+  } // <-- FIXED: Added missing closing bracket here!
+
+  // --- TIMELINE LOGS ---
   async addTimelineLog(userId: number, projectId: number, body: any) {
     const { title, description, cost, imageUrl } = body;
     const project = await this.prisma.project.findUnique({ where: { id: projectId } });
@@ -186,6 +208,7 @@ private async linkTagsToProject(tx: any, projectId: number, tags: string[]) {
     await (this.prisma as any).modLog.delete({ where: { id: logId } });
     return { success: true, message: 'Timeline modification log wiped successfully' };
   }
+
   // --- NEW: FETCH USER DASHBOARD COUNTERS & INSIGHT METRICS ---
   async getUserDashboardMetrics(userId: number) {
     const cleanId = Number(userId);
@@ -223,7 +246,6 @@ private async linkTagsToProject(tx: any, projectId: number, tags: string[]) {
 
   // --- NEW: SYSTEM-WIDE GLOBAL FEED FOR THE RECENT ACTIVITY BLOCK ---
   async getRecentActivityFeed() {
-    // Fetches the top 5 newest timeline logs posted across all platform users
     return (this.prisma as any).modLog.findMany({
       take: 5,
       orderBy: { createdAt: 'desc' },
