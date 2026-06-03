@@ -5,6 +5,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthDto } from './dto/auth.dto';
 import { AddMoneyDto } from './dto/add-money.dto'; 
 import { JwtAuthGuard } from './jwt-auth.guard';
+import { LoginDto } from './dto/login.dto';
 
 @ApiTags('Authentication & Testing Profiles')
 @Controller('auth')
@@ -22,7 +23,7 @@ export class AuthController {
 
   @Post('login')
   @ApiOperation({ summary: 'Log in to receive your Bearer access token' })
-  async login(@Body() body: AuthDto) {
+  async login(@Body() body: LoginDto) {
     return this.authService.login(body);
   }
 
