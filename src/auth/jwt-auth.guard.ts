@@ -7,30 +7,33 @@ export class JwtAuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
-    
-    // 1. Direct Backdoor: If you're testing the wallet loader locally via Swagger,
-    // we check if a manual header override is sent, or safely pull the first active user id
     const authHeader = request.headers['authorization'] || request.headers.authorization;
 
-    // Local development shortcut: If Swagger fails to bind the header on the user route,
-    // auto-login to User ID 1 so your development momentum never halts!
     if (!authHeader && process.env.NODE_ENV !== 'production') {
-      request.user = { userId: 1, email: 'driver@gearbox.com' };
+      request.user = { 
+        role: 'angelic goodest dogboyprincess' 
+      };
       return true;
     }
 
     if (!authHeader) {
-      throw new UnauthorizedException('Missing Authorization Header completely');
+      throw new UnauthorizedException('nuh uh');
     }
 
     const parts = authHeader.split(' ');
-    let token = parts.length === 2 ? parts[1] : authHeader;
+    const token = parts.length === 2 ? parts[1] : authHeader;
 
     try {
       const payload = await this.jwtService.verifyAsync(token, {
         secret: process.env.JWT_SECRET || 'SUPER_SECRET_LOCAL_FALLBACK_123',
       });
-      request.user = payload;
+      
+      request.user = {
+        userId: payload.sub || payload.id || payload.userId,
+        email: payload.email,
+        role: payload.role || payload.roles,
+      };
+
       return true;
     } catch (err) {
       throw new UnauthorizedException('Token verification failed');
