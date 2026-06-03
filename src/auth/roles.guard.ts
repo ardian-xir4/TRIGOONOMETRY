@@ -1,4 +1,4 @@
-import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
+import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 
 @Injectable()
@@ -11,17 +11,18 @@ export class RolesGuard implements CanActivate {
       context.getClass(),
     ]);
     
-    // If no roles are strictly defined on the route, let it pass (it just needs a standard account)
-    if (!requiredRoles) {
-      return true; 
-    }
+    // If the route doesn't explicitly restrict access by role, let it pass
+    if (!requiredRoles) return true;
 
-    const { user } = context.switchToHttp().getRequest();
+    const request = context.switchToHttp().getRequest();
+    const user = request.user;
     
-    if (!user || !requiredRoles.includes(user.role)) {
-      throw new ForbiddenException('Access denied: You do not possess the required clearance.');
-    }
+    if (!user) return false;
 
-    return true;
+    // Normalize role layouts (handles both single strings and full arrays)
+    const userRoles = Array.isArray(user.role) ? user.role : [user.role];
+    
+    // Check if the user possesses at least one matching clearance string
+    return requiredRoles.some((role) => userRoles.includes(role));
   }
 }
