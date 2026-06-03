@@ -57,7 +57,7 @@ export class ProjectsController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update your project thread details' })
   async updateProj(@Req() req: any, @Param('id', ParseIntPipe) id: number, @Body() body: CreateProjectDto) {
-    return this.projectsService.updateProject(req.user.userId, id, body);
+  return this.projectsService.updateProject(id, req.user.userId, body);
   }
 
   @Delete(':id')
@@ -65,7 +65,7 @@ export class ProjectsController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete your project thread completely' })
   async deleteProj(@Req() req: any, @Param('id', ParseIntPipe) id: number) {
-    return this.projectsService.deleteProject(req.user.userId, id);
+  return this.projectsService.deleteProject(id, req.user.userId);
   }
 
   // --- LOG TIMELINE ENDPOINTS ---
