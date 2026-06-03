@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Post, Get, Body, UseGuards, Req, BadRequestException} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { PrismaService } from '../prisma/prisma.service'; // <-- Added to fix this.prisma
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -51,5 +51,26 @@ export class AuthController {
     });
     
     return user; // <-- Added return so Swagger actually gets the data back
+  }
+
+  @Get('wallet')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Check current wallet balance' })
+  async getWalletBalance(@Req() req: any) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: req.user.userId },
+      select: {
+        wallet: true, // Only grabs the wallet field from the database
+      },
+    });
+
+    if (!user) {
+      throw new BadRequestException('Account not found');
+    }
+
+    return {
+      currentBalance: user.wallet,
+    };
   }
 }
