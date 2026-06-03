@@ -11,8 +11,8 @@ datasource db {
 model User {
   id        Int       @id @default(autoincrement())
   email     String    @unique
-  username  String    @unique
-  fullname  String
+  username  String?    @unique
+  fullname  String?
   password  String
   wallet    Decimal   @default(0.00) @db.Decimal(10, 2)
   role      String   @default("goons")
