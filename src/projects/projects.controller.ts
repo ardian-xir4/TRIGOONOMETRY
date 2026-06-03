@@ -3,10 +3,17 @@ import { ProjectsService } from './projects.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
-import { ApiTags, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiQuery, ApiBody, ApiProperty } from '@nestjs/swagger';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { CreateTimelineDto } from './dto/create-timeline.dto';
 import { PrismaService } from '../prisma/prisma.service';
+
+class CreateListingDto {
+  @ApiProperty({ example: 'Stage 3 Turbocharger' })
+  name: string;
+  @ApiProperty({ example: 4500 })
+  price: number;
+}
 
 @ApiTags('Project Forum & Marketplace System')
 @Controller('projects')
@@ -20,13 +27,21 @@ export class ProjectsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('angelic goodest dogboyprincess', 'lobotomites')
   @ApiBearerAuth()
-  async createListing(@Body() body: { name: string; price: number }) {
+  @ApiBody({ type: CreateListingDto })
+  async createListing(@Body() body: CreateListingDto) {
     return this.projectsService.createPartListing(body);
   }
 
   @Get('market/listings')
   async getListings() {
     return this.projectsService.getMarketplaceListings();
+  }
+
+  @Post('market/purchase/:listingId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiBearerAuth()
+  async buyItem(@Req() req: any, @Param('listingId', ParseIntPipe) listingId: number) {
+    return this.projectsService.purchaseMarketplaceItem(req.user.userId, listingId);
   }
 
   @Post()
@@ -95,18 +110,9 @@ export class ProjectsController {
   async getProjectsByUsername(@Param('username') username: string) {
     const userWithProjects = await this.prisma.user.findUnique({
       where: { username },
-      select: {
-        fullname: true,
-        username: true,
-        avatarUrl: true,
-        projects: true
-      }
+      select: { fullname: true, username: true, avatarUrl: true, projects: true }
     });
-
-    if (!userWithProjects) {
-      throw new NotFoundException(`The user handle "${username}" does not exist`);
-    }
-
+    if (!userWithProjects) throw new NotFoundException(`The user handle "${username}" does not exist`);
     return userWithProjects;
   }
 }
